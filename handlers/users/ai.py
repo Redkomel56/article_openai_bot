@@ -5,6 +5,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from loader import dp
 from states.talk_state import AI
 import openai
+from loader import bot
 
 
 @dp.callback_query_handler(text='start')
@@ -25,31 +26,33 @@ async def chat_talk(message: types.Message, state: FSMContext):
          InlineKeyboardButton(text="Стереть память", callback_data="clear")]])
     await message.answer("ИИ думает...", reply_markup=kb)
 
-    history = 'Это ИИ создан для помощи людям. Он должен давать точный ответ на любой вопрос и поддерживать разговор.\n'
+    history = []
     if len(data) > 1:
         for index in range(0, len(data)):
-            print(index)
-            print(data[index])
             if data[index].get('question') is None:
-                print(123213123)
                 data[index]['question'] = message.text
-                history += f"Вопрос: {data[index]['question']}\nОтвет:"
+                d = {"role": "user", "content": data[index]['question']}
+                history.append(d)
             else:
-                history += f"Вопрос: {data[index].get('question')}\nОтвет: {data[index].get('answer')}\n"
+                d = [{"role": "user", "content": data[index]['question']}, {"role": "assistant", "content": data[index].get('answer')}]
+                history += d
     else:
         data[0]['question'] = message.text
-        history += f"Вопрос: {data[0].get('question')}\nОтвет:"
-    request = openai.Completion.create(
-        engine="text-davinci-003",
-        prompt='"""\n{}\n"""'.format(history),
-        temperature=0.5,
+        d = {"role": "user", "content": data[0].get('question')}
+        history.append(d)
+    print(history)
+    request = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        messages=history,
         max_tokens=500,
-        top_p=1.0,
-        frequency_penalty=0.5,
-        presence_penalty=0.0)
-    resp_ai = request["choices"][0]["text"]
+        temperature=1,
+    )
+    resp_ai = request['choices'][0]['message']['content']
     data[-1]['answer'] = resp_ai.replace('\n', '')
+    text = f"{message.from_user.username}\nQ:{data[-1]['question']}\nA:{data[-1]['answer']}"
     data.append({"question": None, "answer": None})
+    if len(data) > 10:
+        await state.update_data(history=[{"question": None, "answer": None}])
     await state.update_data(history=data)
     await message.answer(resp_ai)
 
